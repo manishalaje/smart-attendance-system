@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Attendance • Login</title>
+  <style>
+    :root {
+      --glass: rgba(255,255,255,.12);
+      --line: rgba(255,255,255,.2);
+      --text: #eaf0ff;
+      --muted: #b8c2df;
+      --accent: #6ea8ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 20% 20%, #243b77 0%, #121831 45%, #0a0f20 100%);
+    }
+    .card {
+      width: min(420px, 92vw);
+      padding: 28px;
+      border-radius: 20px;
+      background: var(--glass);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 18px 45px rgba(0,0,0,.35);
+      transition: transform .25s ease, box-shadow .25s ease;
+    }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 24px 55px rgba(0,0,0,.45); }
+    h1 { margin: 0 0 8px; font-size: 1.45rem; }
+    p { margin: 0 0 20px; color: var(--muted); }
+    label { display:block; margin: 12px 0 6px; font-size: .92rem; color: var(--muted); }
+    input {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.2);
+      padding: 12px 13px;
+      font-size: .95rem;
+      color: var(--text);
+      background: rgba(255,255,255,.07);
+      outline: none;
+    }
+    input:focus { border-color: #84b5ff; box-shadow: 0 0 0 3px rgba(88,149,255,.25); }
+    button {
+      width: 100%;
+      margin-top: 18px;
+      border: none;
+      border-radius: 12px;
+      padding: 12px;
+      font-weight: 600;
+      color: white;
+      cursor: pointer;
+      background: linear-gradient(135deg, #4f8dff, #3478ff);
+      transition: transform .12s ease, filter .2s ease;
+    }
+    button:hover { filter: brightness(1.07); }
+    button:active { transform: translateY(1px) scale(.995); }
+    .error {
+      margin-top: 10px;
+      border-radius: 10px;
+      padding: 10px;
+      background: rgba(255, 99, 132, .16);
+      border: 1px solid rgba(255, 99, 132, .4);
+      color: #ffd6df;
+      font-size: .9rem;
+    }
+    .hint { margin-top: 12px; color: var(--muted); font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <form class="card" method="post" action="/login">
+    <h1>Smart Attendance Admin</h1>
+    <p>Sign in to manage registration, recognition, and attendance analytics.</p>
+
+    <label for="username">Username</label>
+    <input id="username" name="username" placeholder="admin" required>
+
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" placeholder="••••••••" required>
+
+    <button type="submit">Login</button>
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+    <div class="hint">Default: admin / admin123 (change via environment variables).</div>
+  </form>
+</body>
+</html>

@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Attendance Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg1: #0a1022;
+      --bg2: #121b36;
+      --glass: rgba(255,255,255,.10);
+      --line: rgba(255,255,255,.18);
+      --text: #edf2ff;
+      --muted: #b8c2df;
+      --ok: #2ecc71;
+      --warn: #ff9f43;
+      --bad: #ff5a5f;
+      --accent: #4f8dff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at 10% 10%, #283e79 0%, var(--bg2) 45%, var(--bg1) 100%);
+      min-height: 100vh;
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 26px; }
+    .topbar {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .title h1 { margin: 0; font-size: 1.7rem; }
+    .title p { margin: 4px 0 0; color: var(--muted); }
+    .btn {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 14px;
+      cursor: pointer;
+      transition: transform .12s ease, background .2s ease, border-color .2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); background: rgba(255,255,255,.16); }
+    .btn:active { transform: translateY(1px); }
+    .btn.primary {
+      border: none;
+      background: linear-gradient(135deg, #5894ff, #3e79ff);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 16px;
+    }
+    .card {
+      background: var(--glass);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 14px 40px rgba(0,0,0,.33);
+      padding: 16px;
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 20px 50px rgba(0,0,0,.40); }
+    .card h2 { margin: 0 0 12px; font-size: 1.1rem; }
+    .camera { display: grid; gap: 12px; }
+    video, canvas.preview {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(8,12,25,.8);
+      min-height: 260px;
+      object-fit: cover;
+    }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    input, select {
+      width: 100%;
+      border-radius: 11px;
+      border: 1px solid rgba(255,255,255,.22);
+      background: rgba(255,255,255,.08);
+      color: var(--text);
+      padding: 10px;
+      outline: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .92rem;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid rgba(255,255,255,.12); }
+    th { color: #d8e1ff; font-weight: 600; background: rgba(255,255,255,.08); }
+    .pill { display: inline-block; border-radius: 999px; padding: 4px 10px; font-size: .78rem; font-weight: 700; }
+    .green { color:#dcffe9; background: rgba(46,204,113,.25); }
+    .orange { color:#fff3dd; background: rgba(255,159,67,.25); }
+    .red { color:#ffe3e3; background: rgba(255,90,95,.25); }
+    .two-col { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+    .status {
+      margin-top: 10px;
+      min-height: 22px;
+      font-size: .9rem;
+      color: #dbe6ff;
+    }
+    .status.error { color: #ffd2d5; }
+    .status.success { color: #cbffd5; }
+    .user-list {
+      display:grid;
+      gap:8px;
+      max-height: 250px;
+      overflow: auto;
+    }
+    .user-row {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      border:1px solid rgba(255,255,255,.13);
+      background: rgba(255,255,255,.06);
+      border-radius:10px;
+      padding:8px 10px;
+      font-size:.9rem;
+    }
+    @media (max-width: 1100px) {
+      .grid, .two-col { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="title">
+        <h1>Smart Attendance Dashboard</h1>
+        <p>Welcome, {{ username }} • Premium face-recognition attendance workspace</p>
+      </div>
+      <form method="post" action="/logout"><button class="btn">Logout</button></form>
+    </div>
+
+    {% if not face_lib_available %}
+      <div class="card" style="border-color: rgba(255,90,95,.6); margin-bottom: 16px;">
+        <strong>face_recognition/dlib is missing.</strong>
+        Install dependencies to enable registration and recognition.
+      </div>
+    {% endif %}
+
+    <div class="grid">
+      <section class="card camera">
+        <h2>📷 Camera Panel</h2>
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="preview" class="preview"></canvas>
+
+        <div class="controls">
+          <input id="userId" placeholder="User ID (e.g., STU-001)">
+          <input id="userName" placeholder="Full Name">
+          <select id="subject">
+            {% for s in subjects %}
+              <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+          <input id="subjectCustom" placeholder="Or type custom subject">
+        </div>
+
+        <div class="controls">
+          <button class="btn" id="captureBtn">Capture</button>
+          <button class="btn primary" id="registerBtn">Register Face</button>
+          <button class="btn primary" id="recognizeBtn">Recognize & Mark</button>
+          <button class="btn" id="realtimeBtn">Toggle Realtime</button>
+        </div>
+        <div id="status" class="status"></div>
+      </section>
+
+      <section class="card">
+        <h2>🧩 User Management</h2>
+        <div id="userList" class="user-list">
+          {% for u in users %}
+            <div class="user-row"><span>{{ u.name }} ({{ u.user_id }})</span><span>saved</span></div>
+          {% else %}
+            <div class="user-row"><span>No users registered</span></div>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+
+    <div class="two-col">
+      <section class="card">
+        <h2>📊 Overall Attendance</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Present / Total</th><th>Percentage</th></tr></thead>
+          <tbody id="overallBody"><tr><td colspan="3">No records yet</td></tr></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>🥯 Attendance Distribution</h2>
+        <canvas id="attendanceChart" height="230"></canvas>
+      </section>
+    </div>
+
+    <div class="two-col">
+      <section class="card">
+        <h2>📚 Subject-wise Attendance</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Subject</th><th>Present / Total</th><th>Percentage</th></tr></thead>
+          <tbody id="subjectBody"><tr><td colspan="4">No records yet</td></tr></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>🛡️ Fraud Alerts</h2>
+        <table>
+          <thead><tr><th>Type</th><th>User</th><th>Details</th></tr></thead>
+          <tbody id="fraudBody"><tr><td colspan="3">No alerts</td></tr></tbody>
+        </table>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('preview');
+    const statusEl = document.getElementById('status');
+    const userIdEl = document.getElementById('userId');
+    const userNameEl = document.getElementById('userName');
+    const subjectEl = document.getElementById('subject');
+    const subjectCustomEl = document.getElementById('subjectCustom');
+    const ctx = canvas.getContext('2d');
+
+    let latestImage = null;
+    let realtimeTimer = null;
+    let chart = null;
+
+    function setStatus(msg, type='') {
+      statusEl.textContent = msg;
+      statusEl.className = `status ${type}`;
+    }
+
+    function subjectValue() {
+      return subjectCustomEl.value.trim() || subjectEl.value;
+    }
+
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+      } catch (error) {
+        setStatus(`Camera error: ${error.message}`, 'error');
+      }
+    }
+
+    function captureFrame() {
+      if (!video.videoWidth) {
+        setStatus('Camera not ready yet.', 'error');
+        return null;
+      }
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      latestImage = canvas.toDataURL('image/jpeg', 0.92);
+      setStatus('Image captured.', 'success');
+      return latestImage;
+    }
+
+    async function postJSON(url, payload, method='POST') {
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: method === 'GET' ? undefined : JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Request failed');
+      return data;
+    }
+
+    function percentPill(p) {
+      let cls = 'red';
+      if (p > 75) cls = 'green';
+      else if (p >= 50) cls = 'orange';
+      return `<span class="pill ${cls}">${p}%</span>`;
+    }
+
+    function renderOverall(rows) {
+      const body = document.getElementById('overallBody');
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="3">No records yet</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.name}</td>
+          <td>${r.present_days} / ${r.total_classes}</td>
+          <td>${percentPill(r.percentage)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderSubject(rows) {
+      const body = document.getElementById('subjectBody');
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="4">No subject attendance yet</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.name}</td>
+          <td>${r.subject}</td>
+          <td>${r.present_days} / ${r.total_classes}</td>
+          <td>${percentPill(r.percentage)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderFraud(rows) {
+      const body = document.getElementById('fraudBody');
+      if (!rows.length) {
+        body.innerHTML = '<tr><td colspan="3">No alerts</td></tr>';
+        return;
+      }
+      body.innerHTML = rows.map(r => `
+        <tr>
+          <td>${r.alert_type}</td>
+          <td>${r.name || '-'}</td>
+          <td>${r.details || '-'}</td>
+        </tr>
+      `).join('');
+    }
+
+    function renderUsers(rows) {
+      const box = document.getElementById('userList');
+      if (!rows.length) {
+        box.innerHTML = '<div class="user-row"><span>No users registered</span></div>';
+        return;
+      }
+      box.innerHTML = rows.map(u => `
+        <div class="user-row">
+          <span>${u.name} (${u.user_id})</span>
+          <button class="btn" onclick="deleteUser('${u.user_id}')">Delete</button>
+        </div>
+      `).join('');
+    }
+
+    function renderChart(rows) {
+      const labels = rows.map(r => r.name);
+      const values = rows.map(r => Number(r.percentage));
+      const colors = ['#5DA5FF','#7BC8A4','#FFB347','#FF6F91','#A29BFE','#59C3C3','#F39C9C'];
+
+      if (chart) chart.destroy();
+      chart = new Chart(document.getElementById('attendanceChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{ data: values, backgroundColor: labels.map((_,i) => colors[i % colors.length]) }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: '#e9efff' } }
+          }
+        }
+      });
+    }
+
+    async function refreshDashboard() {
+      try {
+        const data = await postJSON('/api/dashboard-data', {}, 'GET');
+        renderOverall(data.summary || []);
+        renderSubject(data.subjects || []);
+        renderFraud(data.fraud || []);
+        renderUsers(data.users || []);
+        renderChart(data.summary || []);
+      } catch (error) {
+        setStatus(`Dashboard load error: ${error.message}`, 'error');
+      }
+    }
+
+    async function registerFace() {
+      try {
+        const user_id = userIdEl.value.trim();
+        const name = userNameEl.value.trim();
+        if (!user_id || !name) throw new Error('Please enter user ID and name');
+        const image = latestImage || captureFrame();
+
+        setStatus('Registering face...', '');
+        await postJSON('/api/register', { user_id, name, image });
+        setStatus('Face registered successfully.', 'success');
+        await refreshDashboard();
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+
+    async function recognizeFace() {
+      try {
+        const subject = subjectValue();
+        if (!subject) throw new Error('Please select or enter a subject');
+        const image = latestImage || captureFrame();
+
+        setStatus('Processing recognition...', '');
+        const data = await postJSON('/api/recognize', { subject, image });
+        setStatus(`Marked: ${data.attendance.name} (${subject})`, 'success');
+        await refreshDashboard();
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+
+    async function deleteUser(userId) {
+      try {
+        await postJSON(`/api/users/${userId}`, {}, 'DELETE');
+        setStatus(`Deleted user ${userId}`, 'success');
+        await refreshDashboard();
+      } catch (error) {
+        setStatus(error.message, 'error');
+      }
+    }
+    window.deleteUser = deleteUser;
+
+    function toggleRealtime() {
+      if (realtimeTimer) {
+        clearInterval(realtimeTimer);
+        realtimeTimer = null;
+        setStatus('Realtime recognition stopped.', '');
+        return;
+      }
+      realtimeTimer = setInterval(() => {
+        latestImage = captureFrame();
+        recognizeFace();
+      }, 7000);
+      setStatus('Realtime recognition started (every 7s).', 'success');
+    }
+
+    document.getElementById('captureBtn').addEventListener('click', captureFrame);
+    document.getElementById('registerBtn').addEventListener('click', registerFace);
+    document.getElementById('recognizeBtn').addEventListener('click', recognizeFace);
+    document.getElementById('realtimeBtn').addEventListener('click', toggleRealtime);
+
+    startCamera();
+    refreshDashboard();
+  </script>
+</body>
+</html>
