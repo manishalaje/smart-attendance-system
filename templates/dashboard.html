@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Attendance Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f4f6f8; margin:0; padding:20px; }
+    h1 { margin-top:0; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; }
+    .card { background:white; border-radius:10px; padding:16px; box-shadow: 0 2px 8px rgba(0,0,0,.07); }
+    table { width:100%; border-collapse: collapse; font-size:14px; }
+    th, td { border-bottom: 1px solid #eee; padding:8px; text-align:left; }
+    th { background:#fafafa; }
+    .badge { display:inline-block; padding:4px 8px; border-radius:12px; background:#ffe6e6; color:#b00020; font-size:12px; }
+  </style>
+</head>
+<body>
+  <h1>Smart Attendance System</h1>
+  <p>Live dashboard for attendance and fraud monitoring.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Total Attendance per User</h2>
+      <table>
+        <thead><tr><th>User ID</th><th>Name</th><th>Total</th></tr></thead>
+        <tbody>
+          {% for row in totals %}
+          <tr><td>{{ row.user_id }}</td><td>{{ row.name }}</td><td>{{ row.total_attendance }}</td></tr>
+          {% else %}
+          <tr><td colspan="3">No records yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Daily Attendance Logs</h2>
+      <table>
+        <thead><tr><th>Name</th><th>Time (UTC)</th><th>Confidence</th></tr></thead>
+        <tbody>
+          {% for row in daily_logs %}
+          <tr><td>{{ row.name }}</td><td>{{ row.timestamp }}</td><td>{{ '%.2f'|format(row.confidence) }}</td></tr>
+          {% else %}
+          <tr><td colspan="3">No attendance logged yet</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Fraud Alerts</h2>
+      <table>
+        <thead><tr><th>Type</th><th>User</th><th>Details</th><th>Time (UTC)</th></tr></thead>
+        <tbody>
+          {% for row in fraud_alerts %}
+          <tr>
+            <td><span class="badge">{{ row.alert_type }}</span></td>
+            <td>{{ row.name or '-' }}</td>
+            <td>{{ row.details }}</td>
+            <td>{{ row.timestamp }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4">No fraud alerts 🎉</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>
