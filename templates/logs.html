@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+
+<div class="main">
+<h2>📝 Attendance Logs</h2>
+
+<div class="card">
+{% for log in logs %}
+<p>{{log[0]}} - {{log[1]}} - {{log[2]}}</p>
+{% endfor %}
+</div>
+
+</div>
+
+</body>
+</html>s

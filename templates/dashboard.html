@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body id="top">
+
+<!-- SIDEBAR -->
+<div class="sidebar">
+<h2>🤖 AI</h2>
+
+<a href="#" onclick="showSection('dashboard')" class="active">Dashboard</a>
+<a href="#" onclick="showSection('analytics')">Analytics</a>
+<a href="#" onclick="showSection('logs')">Logs</a>
+
+<button onclick="logout()" class="logout">Logout</button>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+<!-- TOP BAR -->
+<div class="topbar">
+<h2>Smart Attendance</h2>
+<div class="profile">👤 {{session['user']}}</div>
+</div>
+
+<!-- CONTROLS -->
+<div class="top">
+<input id="name" placeholder="Enter name">
+
+<select id="subject">
+<option>AI</option>
+<option>Math</option>
+<option>DBMS</option>
+</select>
+
+<button class="green" onclick="register()">Register</button>
+<button class="blue" onclick="mark()">Mark</button>
+<button class="red" onclick="reset()">Reset</button>
+
+<p id="status">Idle</p>
+</div>
+
+<!-- ================= DASHBOARD ================= -->
+<div id="dashboardSection">
+
+<!-- SUMMARY -->
+<div class="card">
+<h3>📊 Today Summary</h3>
+
+<div class="stats">
+<div class="box">
+<h4>Total Students</h4>
+<p>{{ total_students }}</p>
+</div>
+
+<div class="box">
+<h4>Present</h4>
+<p>{{ present_total }}</p>
+</div>
+
+<div class="box">
+<h4>Absent</h4>
+<p>{{ total_students - present_total }}</p>
+</div>
+
+<div class="box">
+<h4>Attendance %</h4>
+<p>
+{{ (present_total / total_students * 100) | int if total_students > 0 else 0 }}%
+</p>
+</div>
+</div>
+</div>
+
+<!-- SUBJECT OVERVIEW -->
+<div class="card analytics">
+<h3>📊 Subject Overview</h3>
+
+<div class="stats">
+{% for s in summary %}
+<div class="box">
+<h4>{{s.subject}}</h4>
+<p>{{s.percentage}}%</p>
+
+<div class="bar">
+<div class="fill" style="width:{{s.percentage}}%"></div>
+</div>
+</div>
+{% endfor %}
+</div>
+</div>
+
+<!-- 🏆 LEADERBOARD -->
+<div class="card">
+<h3>🏆 Top Students</h3>
+<div id="leaderboard"></div>
+</div>
+
+<!-- ⚠️ WARNINGS -->
+<div class="card">
+<h3>⚠️ Low Attendance</h3>
+<div id="warnings"></div>
+</div>
+
+</div>
+
+<!-- ================= ANALYTICS ================= -->
+<div id="analyticsSection" style="display:none;">
+
+<div class="charts-grid">
+
+    <div class="card small">
+        <h4>📊 Subject Split</h4>
+        <canvas id="pie"></canvas>
+    </div>
+
+    <div class="card small">
+        <h4>📈 Attendance Trend</h4>
+        <canvas id="lineChart"></canvas>
+    </div>
+
+    <div class="card small">
+        <h4>📦 Subject Count</h4>
+        <canvas id="barChart"></canvas>
+    </div>
+
+</div>
+
+</div>
+
+<!-- ================= LOGS ================= -->
+<div id="logsSection" style="display:none;">
+
+<div class="card">
+<h3>📝 Logs</h3>
+
+<div id="logsContainer">
+{% for log in logs %}
+<p>{{log[0]}} - {{log[1]}} - {{log[2]}}</p>
+{% endfor %}
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- CAMERA -->
+<div class="camera">
+    <video id="video" autoplay muted></video>
+    <canvas id="overlay"></canvas>
+</div>
+
+<!-- SOUND -->
+<audio id="beep" src="https://www.soundjay.com/buttons/sounds/button-3.mp3"></audio>
+
+<!-- POPUP -->
+<div id="popup" class="popup"></div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+
+<script>
+function logout(){
+    window.location.href="/logout";
+}
+
+/* 🔥 SECTION SWITCH */
+function showSection(section){
+
+    document.getElementById("dashboardSection").style.display = "none";
+    document.getElementById("analyticsSection").style.display = "none";
+    document.getElementById("logsSection").style.display = "none";
+
+    document.querySelectorAll(".sidebar a").forEach(a=>a.classList.remove("active"));
+
+    if(section === "dashboard"){
+        document.getElementById("dashboardSection").style.display = "block";
+        document.querySelectorAll(".sidebar a")[0].classList.add("active");
+    }
+
+    if(section === "analytics"){
+        document.getElementById("analyticsSection").style.display = "block";
+        document.querySelectorAll(".sidebar a")[1].classList.add("active");
+    }
+
+    if(section === "logs"){
+        document.getElementById("logsSection").style.display = "block";
+        document.querySelectorAll(".sidebar a")[2].classList.add("active");
+    }
+}
+
+/* DEFAULT LOAD */
+document.addEventListener("DOMContentLoaded", ()=>{
+    showSection("dashboard");
+});
+</script>
+
+</body>
+</html>

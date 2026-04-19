@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+<div class="main">
+<h2>📊 Analytics</h2>
+
+<div class="card">
+<canvas id="pie"></canvas>
+</div>
+</div>
+
+<script>
+let chart;
+
+function load(){
+    fetch("/live_data")
+    .then(r=>r.json())
+    .then(d=>{
+        chart = new Chart(document.getElementById("pie"),{
+            type:"pie",
+            data:{
+                labels:d.subjects,
+                datasets:[{data:d.counts}]
+            }
+        });
+    });
+}
+
+setInterval(()=>{
+    fetch("/live_data")
+    .then(r=>r.json())
+    .then(d=>{
+        chart.data.labels = d.subjects;
+        chart.data.datasets[0].data = d.counts;
+        chart.update();
+    });
+},2000);
+
+load();
+</script>
+
+</body>
+</html>
