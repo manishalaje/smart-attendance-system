@@ -97,13 +97,33 @@
 <!-- 🏆 LEADERBOARD -->
 <div class="card">
 <h3>🏆 Top Students</h3>
-<div id="leaderboard"></div>
+
+{% if top_students %}
+    {% for s in top_students %}
+        <p>👤 {{ s.name }} - {{ s.percentage }}%</p>
+    {% endfor %}
+{% else %}
+    <p>No data yet</p>
+{% endif %}
+
 </div>
 
 <!-- ⚠️ WARNINGS -->
 <div class="card">
 <h3>⚠️ Low Attendance</h3>
-<div id="warnings"></div>
+
+{% set found = false %}
+{% for s in summary %}
+    {% if s.percentage < 50 %}
+        <p>⚠️ {{ s.subject }} is low ({{ s.percentage }}%)</p>
+        {% set found = true %}
+    {% endif %}
+{% endfor %}
+
+{% if not found %}
+<p>✅ All subjects good</p>
+{% endif %}
+
 </div>
 
 </div>
@@ -169,7 +189,7 @@ function logout(){
     window.location.href="/logout";
 }
 
-/* 🔥 SECTION SWITCH */
+/* SECTION SWITCH */
 function showSection(section){
 
     document.getElementById("dashboardSection").style.display = "none";
@@ -194,7 +214,7 @@ function showSection(section){
     }
 }
 
-/* DEFAULT LOAD */
+/* DEFAULT */
 document.addEventListener("DOMContentLoaded", ()=>{
     showSection("dashboard");
 });

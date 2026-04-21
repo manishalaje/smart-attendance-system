@@ -6,23 +6,19 @@ from PIL import Image
 # ===============================
 # 🔥 TOGGLE MODE
 # ===============================
-USE_AI = False   # 👉 True = LOCAL AI, False = DEPLOY MODE
+USE_AI = False # 👉 True = LOCAL AI, False = DEPLOY MODE
 
-# import only if needed
 if USE_AI:
     import face_recognition
-
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = "secret123"
 
 DB = "attendance.db"
 
-
 # ---------- DB ----------
 def get_conn():
     return sqlite3.connect(DB)
-
 
 def init_db():
     conn = get_conn()
@@ -37,7 +33,6 @@ def init_db():
 
 init_db()
 
-
 def create_admin():
     conn = get_conn()
     c = conn.cursor()
@@ -50,7 +45,6 @@ def create_admin():
 
 create_admin()
 
-
 # ---------- IMAGE ----------
 def decode_image(data):
     data = data.split(",")[1]
@@ -58,17 +52,13 @@ def decode_image(data):
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     return np.array(img)
 
-
 # ===============================
-# 🔥 FACE ENCODING (FULL KEPT)
+# 🔥 FACE ENCODING (UNCHANGED)
 # ===============================
 def get_encoding(img):
-
-    # ---------- DEMO MODE ----------
     if not USE_AI:
         return None
 
-    # ---------- REAL AI MODE ----------
     img = np.ascontiguousarray(img, dtype=np.uint8)
     loc = face_recognition.face_locations(img)
 
@@ -77,7 +67,6 @@ def get_encoding(img):
 
     enc = face_recognition.face_encodings(img, loc)
     return enc[0], loc[0]
-
 
 # ---------- SIGNUP ----------
 @app.route("/signup", methods=["GET","POST"])
@@ -102,7 +91,6 @@ def signup():
         return redirect("/login")
 
     return render_template("signup.html")
-
 
 # ---------- LOGIN ----------
 @app.route("/login", methods=["GET", "POST"])
@@ -132,14 +120,14 @@ def login():
 
     return render_template("login.html")
 
-
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
-
-# ---------- ADMIN DASHBOARD ----------
+# ===============================
+# 🔥 ADMIN DASHBOARD
+# ===============================
 @app.route("/")
 def home():
     if "user" not in session or session.get("role") != "admin":
@@ -181,6 +169,32 @@ def home():
             "percentage": percentage
         })
 
+    # 🔥🔥🔥 FIXED TOP STUDENTS ONLY (NO OTHER CHANGE)
+    total_classes = c.execute("""
+        SELECT COUNT(DISTINCT subject || date)
+        FROM attendance
+    """).fetchone()[0]
+
+    student_stats = c.execute("""
+        SELECT name, COUNT(*) as total
+        FROM attendance
+        GROUP BY name
+        ORDER BY total DESC
+    """).fetchall()
+
+    top_students = []
+    for s in student_stats[:3]:
+        name = s[0]
+        total = s[1]
+
+        percent = int((total / total_classes) * 100) if total_classes else 0
+
+        top_students.append({
+            "name": name,
+            "percentage": percent
+        })
+    # 🔥🔥🔥 END FIX
+
     conn.close()
 
     return render_template("dashboard.html",
@@ -189,9 +203,9 @@ def home():
         subjects=subjects,
         subject_counts=subject_counts,
         total_students=total_students,
-        present_total=present_total
+        present_total=present_total,
+        top_students=top_students
     )
-
 
 # ---------- STUDENT ----------
 @app.route("/student")
@@ -200,7 +214,6 @@ def student_page():
         return redirect("/login")
 
     return render_template("student.html")
-
 
 # ---------- STUDENT DASHBOARD ----------
 @app.route("/student_dashboard")
@@ -243,7 +256,6 @@ def student_dashboard():
         "logs": [{"subject": l[0], "date": l[1]} for l in logs]
     })
 
-
 # ---------- LIVE DATA ----------
 @app.route("/live_data")
 def live_data():
@@ -268,10 +280,7 @@ def live_data():
         "counts": counts
     })
 
-
-# ===============================
-# 🔥 REGISTER (TOGGLE SAFE)
-# ===============================
+# ---------- REGISTER ----------
 @app.route("/register_image", methods=["POST"])
 def register():
 
@@ -279,6 +288,11 @@ def register():
         return jsonify({"message": "Registered (Demo Mode)"})
 
     data = request.json
+    name = data.get("name", "").strip()
+
+    if not name:
+      return jsonify({"message": "Name required"})
+    
     img = decode_image(data["image"])
     res = get_encoding(img)
 
@@ -290,25 +304,21 @@ def register():
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("DELETE FROM users WHERE name=?", (data["name"],))
+    c.execute("DELETE FROM users WHERE name=?", (name,))
     c.execute("INSERT INTO users VALUES(NULL,?,?)",
-              (data["name"], enc.tobytes()))
+          (name, enc.tobytes()))
 
     conn.commit()
     conn.close()
 
     return jsonify({"message": "Registered successfully"})
 
-
-# ===============================
-# 🔥 RECOGNIZE (TOGGLE SAFE)
-# ===============================
+# ---------- RECOGNIZE ----------
 @app.route("/recognize_image", methods=["POST"])
 def recognize():
 
     subject = request.json.get("subject")
 
-    # ---------- DEMO ----------
     if not USE_AI:
         name = "Demo User"
         today = datetime.now().strftime("%Y-%m-%d")
@@ -335,7 +345,6 @@ def recognize():
             "box": None
         })
 
-    # ---------- REAL AI ----------
     data = request.json
     img = decode_image(data["image"])
     res = get_encoding(img)
@@ -395,7 +404,6 @@ def recognize():
         "message": "Marked",
         "box": [top, right, bottom, left]
     })
-
 
 # ---------- RUN ----------
 if __name__ == "__main__":

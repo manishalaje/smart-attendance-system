@@ -29,7 +29,7 @@ function initChart(){
     });
 }
 
-// ---------- LINE CHART (REAL DATA) ----------
+// ---------- LINE CHART ----------
 function initLineChart(){
     const ctx = document.getElementById("lineChart");
     if(!ctx) return;
@@ -92,13 +92,13 @@ function updateChart(){
     });
 }
 
-// ---------- UPDATE LINE (REAL) ----------
+// ---------- ✅ FIXED LINE CHART ----------
 function updateLineChart(){
-    fetch("/analytics_data")
+    fetch("/live_data")   // 🔥 FIX: changed from /analytics_data
     .then(r=>r.json())
     .then(d=>{
         if(lineChart){
-            lineChart.data.labels = d.dates;
+            lineChart.data.labels = d.subjects;
             lineChart.data.datasets[0].data = d.counts;
             lineChart.update();
         }
