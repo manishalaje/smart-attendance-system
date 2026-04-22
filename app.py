@@ -6,7 +6,7 @@ from PIL import Image
 # ===============================
 # 🔥 TOGGLE MODE
 # ===============================
-USE_AI = False # 👉 True = LOCAL AI, False = DEPLOY MODE
+USE_AI = True # 👉 True = LOCAL AI, False = DEPLOY MODE
 
 try:
     if USE_AI:
@@ -152,6 +152,12 @@ def home():
         FROM attendance
         WHERE date=?
     """, (datetime.now().strftime("%Y-%m-%d"),)).fetchone()[0]
+    # 🔥 FALLBACK (ADD THIS RIGHT BELOW present_total)
+    if present_total == 0:
+        present_total = c.execute("""
+            SELECT COUNT(DISTINCT name)
+            FROM attendance
+        """).fetchone()[0]
 
     summary = []
     subject_counts = []
@@ -159,6 +165,12 @@ def home():
     for s in subjects:
         present = c.execute("""
             SELECT COUNT(DISTINCT name)
+            FROM attendance WHERE subject=?
+        """, (s,)).fetchone()[0]
+        # 🔥 FALLBACK
+        if present == 0:
+            present = c.execute("""
+            SELECT COUNT(*)
             FROM attendance WHERE subject=?
         """, (s,)).fetchone()[0]
 
@@ -177,7 +189,13 @@ def home():
         SELECT COUNT(DISTINCT subject || date)
         FROM attendance
     """).fetchone()[0]
-
+    # 🔥 FALLBACK
+    if total_classes == 0:
+        total_classes = c.execute("""
+        SELECT COUNT(*)
+        FROM attendance
+    """).fetchone()[0]
+          
     student_stats = c.execute("""
         SELECT name, COUNT(*) as total
         FROM attendance
@@ -455,6 +473,13 @@ def mark_remote():
 
     return jsonify({"message": "Marked online"})
 
+@app.route("/check_db")
+def check_db():
+    conn = get_conn()
+    c = conn.cursor()
+    rows = c.execute("SELECT * FROM attendance").fetchall()
+    conn.close()
+    return str(rows)
 # ---------- RUN ----------
 if __name__ == "__main__":
     app.run(debug=True)
