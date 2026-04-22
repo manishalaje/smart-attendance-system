@@ -8,9 +8,13 @@ from PIL import Image
 # ===============================
 USE_AI = True # 👉 True = LOCAL AI, False = DEPLOY MODE
 
+# 🔥 FACE RECOGNITION SAFE IMPORT
+FACE_AVAILABLE = False
+
 try:
     if USE_AI:
         import face_recognition
+        FACE_AVAILABLE = True
 except:
     print("face_recognition not available (OK for server)")
 
@@ -184,7 +188,7 @@ def home():
     """).fetchone()[0]
     # 🔥 FALLBACK
     if total_classes == 0:
-        total_classes = c.execute("""r
+        total_classes = c.execute("""
         SELECT COUNT(*)
         FROM attendance
     """).fetchone()[0]
@@ -360,7 +364,11 @@ def recognize():
             "message": "Marked (Demo Mode)",
             "box": None
         })
-
+        if not FACE_AVAILABLE:
+         return jsonify({
+        "success": False,
+        "message": "Face recognition not available on server"
+        })
     data = request.json
     img = decode_image(data["image"])
     res = get_encoding(img)
