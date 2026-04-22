@@ -6,7 +6,7 @@ from PIL import Image
 # ===============================
 # 🔥 TOGGLE MODE
 # ===============================
-USE_AI = False # 👉 True = LOCAL AI, False = DEPLOY MODE
+USE_AI = True # 👉 True = LOCAL AI, False = DEPLOY MODE
 
 if USE_AI:
     import face_recognition
@@ -17,7 +17,7 @@ app.secret_key = "secret123"
 DB = "attendance.db"
 
 # ---------- DB ----------
-def get_conn():
+def get_conn(): 
     return sqlite3.connect(DB)
 
 def init_db():
@@ -393,18 +393,66 @@ def recognize():
         })
 
     c.execute("INSERT INTO attendance VALUES(NULL,?,?,?)",
-              (best_name, subject, today))
+          (best_name, subject, today))
 
     conn.commit()
+
+    # 🔥 HYBRID SYNC (CORRECT POSITION)
+    try:
+        import requests
+        requests.post(
+              "https://smart-attendance-system-8a0k.onrender.com/mark_remote",
+        json={
+            "name": best_name,
+            "subject": subject
+        }
+    )
+        print("SYNC STATUS:", res.status_code, res.text)
+    except Exception as e:
+        print("Hybrid sync failed:", e)
+
     conn.close()
 
     return jsonify({
-        "success": True,
+         "success": True,
         "name": best_name,
         "message": "Marked",
-        "box": [top, right, bottom, left]
+         "box": [top, right, bottom, left]
     })
+# ===============================
+# 🔥 HYBRID MODE (REMOTE MARK)
+# ===============================
+@app.route("/mark_remote", methods=["POST"])
+def mark_remote():
+
+    data = request.json
+
+    name = data.get("name", "").strip()
+    subject = data.get("subject")
+
+    if not name:
+        return jsonify({"message": "Name required"})
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    conn = get_conn()
+    c = conn.cursor()
+
+    exists = c.execute("""
+        SELECT * FROM attendance
+        WHERE name=? AND subject=? AND date=?
+    """, (name, subject, today)).fetchone()
+
+    if not exists:
+        c.execute("INSERT INTO attendance VALUES(NULL,?,?,?)",
+                  (name, subject, today))
+        conn.commit()
+
+    conn.close()
+
+    return jsonify({"message": "Marked online"})
 
 # ---------- RUN ----------
 if __name__ == "__main__":
     app.run(debug=True)
+    
