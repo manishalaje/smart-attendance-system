@@ -416,14 +416,17 @@ def recognize():
     # 🔥 HYBRID SYNC (CORRECT POSITION)
     try:
         import requests
-        requests.post(
-              "https://smart-attendance-system-8a0k.onrender.com/mark_remote",
-        json={
-            "name": best_name,
-            "subject": subject
-        }
-    )
+
+        res = requests.post(
+            "https://smart-attendance-system-8a0k.onrender.com/mark_remote",
+            json={
+                "name": best_name,
+                "subject": subject
+       }
+      )   
+
         print("SYNC STATUS:", res.status_code, res.text)
+    
     except Exception as e:
         print("Hybrid sync failed:", e)
 
