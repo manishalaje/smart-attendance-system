@@ -147,32 +147,25 @@ def home():
 
     total_students = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
 
+    today = datetime.now().strftime("%Y-%m-%d")
+
     present_total = c.execute("""
         SELECT COUNT(DISTINCT name)
         FROM attendance
         WHERE date=?
-    """, (datetime.now().strftime("%Y-%m-%d"),)).fetchone()[0]
-    # 🔥 FALLBACK (ADD THIS RIGHT BELOW present_total)
-    if present_total == 0:
-        present_total = c.execute("""
-            SELECT COUNT(DISTINCT name)
-            FROM attendance
-        """).fetchone()[0]
+    """, (today,)).fetchone()[0]
 
     summary = []
     subject_counts = []
 
     for s in subjects:
+        today = datetime.now().strftime("%Y-%m-%d")
+
         present = c.execute("""
-            SELECT COUNT(DISTINCT name)
-            FROM attendance WHERE subject=?
-        """, (s,)).fetchone()[0]
-        # 🔥 FALLBACK
-        if present == 0:
-            present = c.execute("""
-            SELECT COUNT(*)
-            FROM attendance WHERE subject=?
-        """, (s,)).fetchone()[0]
+        SELECT COUNT(DISTINCT name)
+        FROM attendance
+        WHERE subject=? AND date=?
+        """, (s, today)).fetchone()[0]
 
         percentage = int((present / total_students) * 100) if total_students else 0
 
@@ -186,12 +179,12 @@ def home():
 
     # 🔥🔥🔥 FIXED TOP STUDENTS ONLY (NO OTHER CHANGE)
     total_classes = c.execute("""
-        SELECT COUNT(DISTINCT subject || date)
+        SELECT COUNT(DISTINCT date)
         FROM attendance
     """).fetchone()[0]
     # 🔥 FALLBACK
     if total_classes == 0:
-        total_classes = c.execute("""
+        total_classes = c.execute("""r
         SELECT COUNT(*)
         FROM attendance
     """).fetchone()[0]
@@ -217,7 +210,8 @@ def home():
     # 🔥🔥🔥 END FIX
 
     conn.close()
-
+    absent = max(0, total_students - present_total)
+    
     return render_template("dashboard.html",
         logs=logs,
         summary=summary,
@@ -225,6 +219,7 @@ def home():
         subject_counts=subject_counts,
         total_students=total_students,
         present_total=present_total,
+        absent=absent,
         top_students=top_students
     )
 
