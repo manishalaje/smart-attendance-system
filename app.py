@@ -6,10 +6,13 @@ from PIL import Image
 # ===============================
 # 🔥 TOGGLE MODE
 # ===============================
-USE_AI = True # 👉 True = LOCAL AI, False = DEPLOY MODE
+USE_AI = False # 👉 True = LOCAL AI, False = DEPLOY MODE
 
-if USE_AI:
-    import face_recognition
+try:
+    if USE_AI:
+        import face_recognition
+except:
+    print("face_recognition not available (OK for server)")
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.secret_key = "secret123"
