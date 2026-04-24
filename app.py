@@ -4,6 +4,7 @@ import base64
 import numpy as np
 import io
 import sqlite3
+import requests
 from datetime import datetime
 from PIL import Image
 
@@ -31,6 +32,12 @@ app.secret_key = os.getenv("SECRET_KEY", "secret123")
 # AI MODE
 # ===============================
 USE_AI = os.getenv("USE_AI", "True").lower() == "true"
+
+# If using cloud dashboard URL, set this locally if desired
+REMOTE_URL = os.getenv(
+    "REMOTE_URL",
+    "https://smart-attendance-system-8a0k.onrender.com"
+)
 
 FACE_AVAILABLE = False
 try:
@@ -103,15 +110,14 @@ def init_db():
 def create_admin():
     conn = get_conn()
     c = conn.cursor()
+    qm = qmark()
 
-    p = qmark()
-
-    c.execute(f"SELECT * FROM accounts WHERE username={p}", ("admin",))
+    c.execute(f"SELECT * FROM accounts WHERE username={qm}", ("admin",))
     row = c.fetchone()
 
     if not row:
         c.execute(
-            f"INSERT INTO accounts(username,password,role) VALUES({p},{p},{p})",
+            f"INSERT INTO accounts(username,password,role) VALUES({qm},{qm},{qm})",
             ("admin", "admin123", "admin")
         )
 
@@ -144,6 +150,37 @@ def get_encoding(img):
 
     enc = face_recognition.face_encodings(img, loc)
     return enc[0], loc[0]
+
+
+# ===============================
+# CLOUD SYNC HELPERS
+# ===============================
+def sync_remote_attendance(name, subject):
+    try:
+        requests.post(
+            f"{REMOTE_URL}/mark_remote",
+            json={
+                "name": name,
+                "subject": subject
+            },
+            timeout=5
+        )
+    except Exception as e:
+        print("Remote attendance sync failed:", e)
+
+
+def sync_remote_user(name, enc):
+    try:
+        requests.post(
+            f"{REMOTE_URL}/register_remote",
+            json={
+                "name": name,
+                "encoding": enc.tolist()
+            },
+            timeout=8
+        )
+    except Exception as e:
+        print("Remote user sync failed:", e)
 
 
 # ===============================
@@ -229,10 +266,12 @@ def home():
     total_students = c.fetchone()[0]
 
     today = str(datetime.now().date())
-
     qm = qmark()
 
-    c.execute(f"SELECT COUNT(DISTINCT name) FROM attendance WHERE date={qm}", (today,))
+    c.execute(
+        f"SELECT COUNT(DISTINCT name) FROM attendance WHERE date={qm}",
+        (today,)
+    )
     present_total = c.fetchone()[0]
 
     subjects = ["AI", "Math", "DBMS"]
@@ -257,7 +296,6 @@ def home():
 
         subject_counts.append(present)
 
-    # TOP STUDENTS
     c.execute("SELECT COUNT(DISTINCT date) FROM attendance")
     total_days = c.fetchone()[0]
     total_possible = max(total_days * len(subjects), 1)
@@ -415,6 +453,9 @@ def register_image():
     conn.commit()
     conn.close()
 
+    # 🔥 Sync to Render
+    sync_remote_user(name, enc)
+
     return jsonify({"message": "Registered successfully"})
 
 
@@ -427,6 +468,7 @@ def recognize_image():
     today = str(datetime.now().date())
     qm = qmark()
 
+    # DEMO MODE
     if not USE_AI:
         name = "Demo User"
 
@@ -445,6 +487,8 @@ def recognize_image():
             )
             conn.commit()
 
+            sync_remote_attendance(name, subject)
+
         conn.close()
 
         return jsonify({
@@ -454,6 +498,7 @@ def recognize_image():
             "box": None
         })
 
+    # REAL AI MODE
     img = decode_image(request.json["image"])
     res = get_encoding(img)
 
@@ -509,12 +554,73 @@ def recognize_image():
     conn.commit()
     conn.close()
 
+    # 🔥 Sync real AI name to Render
+    sync_remote_attendance(best_name, subject)
+
     return jsonify({
         "success": True,
         "name": best_name,
         "message": "Marked",
         "box": [top, right, bottom, left]
     })
+
+
+# ===============================
+# REMOTE SYNC ROUTES
+# ===============================
+@app.route("/mark_remote", methods=["POST"])
+def mark_remote():
+    data = request.json
+
+    name = data.get("name", "").strip()
+    subject = data.get("subject")
+    today = str(datetime.now().date())
+    qm = qmark()
+
+    if not name:
+        return jsonify({"message": "Name required"})
+
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute(
+        f"SELECT * FROM attendance WHERE name={qm} AND subject={qm} AND date={qm}",
+        (name, subject, today)
+    )
+
+    if not c.fetchone():
+        c.execute(
+            f"INSERT INTO attendance(name,subject,date) VALUES({qm},{qm},{qm})",
+            (name, subject, today)
+        )
+        conn.commit()
+
+    conn.close()
+
+    return jsonify({"message": "Synced"})
+
+
+@app.route("/register_remote", methods=["POST"])
+def register_remote():
+    data = request.json
+
+    name = data["name"]
+    enc = np.array(data["encoding"], dtype=np.float64)
+    qm = qmark()
+
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute(f"DELETE FROM users WHERE name={qm}", (name,))
+    c.execute(
+        f"INSERT INTO users(name,encoding) VALUES({qm},{qm})",
+        (name, blob_data(enc.tobytes()))
+    )
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"message": "User Synced"})
 
 
 # ===============================
@@ -537,4 +643,4 @@ def check_db():
 # RUN
 # ===============================
 if __name__ == "__main__":
-    app.run(debug=True) 
+    app.run(debug=True)
