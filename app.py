@@ -33,12 +33,14 @@ app.secret_key = os.getenv("SECRET_KEY", "secret123")
 # ===============================
 USE_AI = os.getenv("USE_AI", "True").lower() == "true"
 
-# If using cloud dashboard URL, set this locally if desired
 REMOTE_URL = os.getenv(
     "REMOTE_URL",
     "https://smart-attendance-system-8a0k.onrender.com"
 )
 
+# ===============================
+# FACE RECOGNITION
+# ===============================
 FACE_AVAILABLE = False
 try:
     if USE_AI:
@@ -53,8 +55,7 @@ except:
 def get_conn():
     if USE_POSTGRES:
         return psycopg2.connect(DATABASE_URL)
-    else:
-        return sqlite3.connect("attendance.db")
+    return sqlite3.connect("attendance.db")
 
 
 def qmark():
@@ -65,7 +66,6 @@ def blob_data(data):
     if USE_POSTGRES:
         return Binary(data)
     return data
-
 
 # ===============================
 # INIT DB
@@ -113,9 +113,8 @@ def create_admin():
     qm = qmark()
 
     c.execute(f"SELECT * FROM accounts WHERE username={qm}", ("admin",))
-    row = c.fetchone()
 
-    if not row:
+    if not c.fetchone():
         c.execute(
             f"INSERT INTO accounts(username,password,role) VALUES({qm},{qm},{qm})",
             ("admin", "admin123", "admin")
@@ -143,45 +142,55 @@ def get_encoding(img):
         return None
 
     img = np.ascontiguousarray(img, dtype=np.uint8)
-    loc = face_recognition.face_locations(img)
 
+    loc = face_recognition.face_locations(img)
     if not loc:
         return None
 
     enc = face_recognition.face_encodings(img, loc)
     return enc[0], loc[0]
 
-
 # ===============================
 # CLOUD SYNC HELPERS
 # ===============================
 def sync_remote_attendance(name, subject):
     try:
-        requests.post(
-            f"{REMOTE_URL}/mark_remote",
-            json={
-                "name": name,
-                "subject": subject
-            },
-            timeout=5
-        )
+        url = f"{REMOTE_URL}/mark_remote"
+
+        payload = {
+            "name": name,
+            "subject": subject
+        }
+
+        print("🌐 Syncing attendance:", payload)
+
+        r = requests.post(url, json=payload, timeout=10)
+
+        print("✅ Status:", r.status_code)
+        print("✅ Response:", r.text)
+
     except Exception as e:
-        print("Remote attendance sync failed:", e)
+        print("❌ Remote attendance sync failed:", e)
 
 
 def sync_remote_user(name, enc):
     try:
-        requests.post(
-            f"{REMOTE_URL}/register_remote",
-            json={
-                "name": name,
-                "encoding": enc.tolist()
-            },
-            timeout=8
-        )
-    except Exception as e:
-        print("Remote user sync failed:", e)
+        url = f"{REMOTE_URL}/register_remote"
 
+        payload = {
+            "name": name,
+            "encoding": enc.tolist()
+        }
+
+        print("🌐 Syncing user:", name)
+
+        r = requests.post(url, json=payload, timeout=15)
+
+        print("✅ Status:", r.status_code)
+        print("✅ Response:", r.text)
+
+    except Exception as e:
+        print("❌ Remote user sync failed:", e)
 
 # ===============================
 # AUTH
@@ -208,6 +217,7 @@ def signup():
 
         conn.commit()
         conn.close()
+
         return redirect("/login")
 
     return render_template("signup.html")
@@ -237,6 +247,7 @@ def login():
 
             if user[3] == "admin":
                 return redirect("/")
+
             return redirect("/student")
 
     return render_template("login.html")
@@ -247,9 +258,8 @@ def logout():
     session.clear()
     return redirect("/login")
 
-
 # ===============================
-# HOME DASHBOARD
+# DASHBOARD
 # ===============================
 @app.route("/")
 def home():
@@ -272,7 +282,9 @@ def home():
         f"SELECT COUNT(DISTINCT name) FROM attendance WHERE date={qm}",
         (today,)
     )
+
     present_total = c.fetchone()[0]
+    absent = max(total_students - present_total, 0)
 
     subjects = ["AI", "Math", "DBMS"]
     summary = []
@@ -285,6 +297,7 @@ def home():
         )
 
         present = c.fetchone()[0]
+
         pct = int((present / total_students) * 100) if total_students else 0
         pct = min(pct, 100)
 
@@ -296,10 +309,6 @@ def home():
 
         subject_counts.append(present)
 
-    c.execute("SELECT COUNT(DISTINCT date) FROM attendance")
-    total_days = c.fetchone()[0]
-    total_possible = max(total_days * len(subjects), 1)
-
     c.execute("""
         SELECT name, COUNT(*) total
         FROM attendance
@@ -309,15 +318,12 @@ def home():
     """)
 
     rows = c.fetchall()
+
     top_students = []
-
     for row in rows:
-        pct = int((row[1] / total_possible) * 100)
-        pct = min(pct, 100)
-
         top_students.append({
             "name": row[0],
-            "percentage": pct
+            "percentage": min(row[1] * 10, 100)
         })
 
     conn.close()
@@ -327,12 +333,11 @@ def home():
         logs=logs,
         total_students=total_students,
         present_total=present_total,
-        absent=max(total_students - present_total, 0),
+        absent=absent,
         summary=summary,
         subject_counts=subject_counts,
         top_students=top_students
     )
-
 
 # ===============================
 # STUDENT PAGE
@@ -342,53 +347,6 @@ def student():
     if "user" not in session:
         return redirect("/login")
     return render_template("student.html")
-
-
-@app.route("/student_dashboard")
-def student_dashboard():
-    if "user" not in session:
-        return jsonify({"error": "login required"})
-
-    name = session["user"]
-
-    conn = get_conn()
-    c = conn.cursor()
-    qm = qmark()
-
-    c.execute(
-        f"SELECT subject,date FROM attendance WHERE name={qm}",
-        (name,)
-    )
-
-    logs = c.fetchall()
-    total = len(logs)
-
-    days = len(set([str(x[1]) for x in logs]))
-    possible = max(days * 3, 1)
-
-    pct = int((total / possible) * 100) if total else 0
-    pct = min(pct, 100)
-
-    subs = ["AI", "Math", "DBMS"]
-    subject_data = []
-
-    for s in subs:
-        count = len([x for x in logs if x[0] == s])
-        sp = int((count / total) * 100) if total else 0
-
-        subject_data.append({
-            "subject": s,
-            "percentage": sp
-        })
-
-    conn.close()
-
-    return jsonify({
-        "percentage": pct,
-        "subjects": subject_data,
-        "logs": [{"subject": x[0], "date": str(x[1])} for x in logs]
-    })
-
 
 # ===============================
 # LIVE DATA
@@ -400,7 +358,6 @@ def live_data():
 
     subjects = ["AI", "Math", "DBMS"]
     counts = []
-
     qm = qmark()
 
     for s in subjects:
@@ -416,7 +373,6 @@ def live_data():
         "subjects": subjects,
         "counts": counts
     })
-
 
 # ===============================
 # REGISTER FACE
@@ -453,11 +409,9 @@ def register_image():
     conn.commit()
     conn.close()
 
-    # 🔥 Sync to Render
     sync_remote_user(name, enc)
 
     return jsonify({"message": "Registered successfully"})
-
 
 # ===============================
 # MARK ATTENDANCE
@@ -503,7 +457,11 @@ def recognize_image():
     res = get_encoding(img)
 
     if not res:
-        return jsonify({"success": False, "message": "No face", "box": None})
+        return jsonify({
+            "success": False,
+            "message": "No face",
+            "box": None
+        })
 
     enc, (top, right, bottom, left) = res
 
@@ -554,7 +512,7 @@ def recognize_image():
     conn.commit()
     conn.close()
 
-    # 🔥 Sync real AI name to Render
+    # 🔥 REAL NAME CLOUD SYNC
     sync_remote_attendance(best_name, subject)
 
     return jsonify({
@@ -564,9 +522,8 @@ def recognize_image():
         "box": [top, right, bottom, left]
     })
 
-
 # ===============================
-# REMOTE SYNC ROUTES
+# REMOTE ROUTES
 # ===============================
 @app.route("/mark_remote", methods=["POST"])
 def mark_remote():
@@ -622,7 +579,6 @@ def register_remote():
 
     return jsonify({"message": "User Synced"})
 
-
 # ===============================
 # CHECK DB
 # ===============================
@@ -637,7 +593,6 @@ def check_db():
     conn.close()
 
     return str(rows)
-
 
 # ===============================
 # RUN
