@@ -6,9 +6,8 @@ from PIL import Image
 # ===============================
 # 🔥 TOGGLE MODE
 # ===============================
-USE_AI = True # 👉 True = LOCAL AI, False = DEPLOY MODE
+USE_AI = True
 
-# 🔥 FACE RECOGNITION SAFE IMPORT
 FACE_AVAILABLE = False
 
 try:
@@ -60,7 +59,7 @@ def decode_image(data):
     return np.array(img)
 
 # ===============================
-# 🔥 FACE ENCODING (UNCHANGED)
+# 🔥 FACE ENCODING
 # ===============================
 def get_encoding(img):
     if not USE_AI:
@@ -171,7 +170,8 @@ def home():
         WHERE subject=? AND date=?
         """, (s, today)).fetchone()[0]
 
-        percentage = int((present / total_students) * 100) if total_students else 0
+        percentage = int((present / total_students) * 100) if total_students > 0 else 0
+        percent = min(percentage, 100)
 
         subject_counts.append(present)
 
@@ -181,18 +181,20 @@ def home():
             "percentage": percentage
         })
 
-    # 🔥🔥🔥 FIXED TOP STUDENTS ONLY (NO OTHER CHANGE)
+    # 🔥 TOP STUDENTS FIXED
     total_classes = c.execute("""
         SELECT COUNT(DISTINCT date)
         FROM attendance
     """).fetchone()[0]
-    # 🔥 FALLBACK
+
     if total_classes == 0:
         total_classes = c.execute("""
         SELECT COUNT(*)
         FROM attendance
     """).fetchone()[0]
-          
+
+    total_subjects = len(subjects)
+
     student_stats = c.execute("""
         SELECT name, COUNT(*) as total
         FROM attendance
@@ -205,13 +207,13 @@ def home():
         name = s[0]
         total = s[1]
 
-        percent = int((total / total_classes) * 100) if total_classes else 0
+        percent = int((total / (total_classes * total_subjects)) * 100) if total_classes else 0
+        percent = min(percent, 100)
 
         top_students.append({
             "name": name,
             "percentage": percent
         })
-    # 🔥🔥🔥 END FIX
 
     conn.close()
     absent = max(0, total_students - present_total)
@@ -254,7 +256,8 @@ def student_dashboard():
     """, (name,)).fetchall()
 
     total = len(logs)
-    percentage = 100 if total > 0 else 0
+    percentage = int((total / (len(set([l[1] for l in logs])) * 3)) * 100) if logs else 0
+    percentage = min(percentage, 100)
 
     subjects_list = ["AI", "Math", "DBMS"]
     subject_data = []
@@ -311,7 +314,7 @@ def register():
     name = data.get("name", "").strip()
 
     if not name:
-      return jsonify({"message": "Name required"})
+        return jsonify({"message": "Name required"})
     
     img = decode_image(data["image"])
     res = get_encoding(img)
@@ -330,6 +333,16 @@ def register():
 
     conn.commit()
     conn.close()
+
+    # 🔥 SYNC USER
+    try:
+        import requests
+        requests.post(
+            "https://smart-attendance-system-8a0k.onrender.com/register_remote",
+            json={"name": name, "encoding": enc.tolist()}
+        )
+    except Exception as e:
+        print("User sync failed:", e)
 
     return jsonify({"message": "Registered successfully"})
 
@@ -364,11 +377,7 @@ def recognize():
             "message": "Marked (Demo Mode)",
             "box": None
         })
-        if not FACE_AVAILABLE:
-         return jsonify({
-        "success": False,
-        "message": "Face recognition not available on server"
-        })
+
     data = request.json
     img = decode_image(data["image"])
     res = get_encoding(img)
@@ -421,20 +430,13 @@ def recognize():
 
     conn.commit()
 
-    # 🔥 HYBRID SYNC (CORRECT POSITION)
+    # 🔥 SYNC ATTENDANCE
     try:
         import requests
-
-        res = requests.post(
+        requests.post(
             "https://smart-attendance-system-8a0k.onrender.com/mark_remote",
-            json={
-                "name": best_name,
-                "subject": subject
-       }
-      )   
-
-        print("SYNC STATUS:", res.status_code, res.text)
-    
+            json={"name": best_name, "subject": subject}
+        )
     except Exception as e:
         print("Hybrid sync failed:", e)
 
@@ -446,9 +448,8 @@ def recognize():
         "message": "Marked",
          "box": [top, right, bottom, left]
     })
-# ===============================
-# 🔥 HYBRID MODE (REMOTE MARK)
-# ===============================
+
+# ---------- REMOTE ----------
 @app.route("/mark_remote", methods=["POST"])
 def mark_remote():
 
@@ -479,6 +480,24 @@ def mark_remote():
 
     return jsonify({"message": "Marked online"})
 
+@app.route("/register_remote", methods=["POST"])
+def register_remote():
+    data = request.json
+    name = data["name"]
+    enc = np.array(data["encoding"], dtype=np.float64)
+
+    conn = get_conn()
+    c = conn.cursor()
+
+    c.execute("DELETE FROM users WHERE name=?", (name,))
+    c.execute("INSERT INTO users VALUES(NULL,?,?)",
+              (name, enc.tobytes()))
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({"message": "User synced"})
+
 @app.route("/check_db")
 def check_db():
     conn = get_conn()
@@ -486,7 +505,7 @@ def check_db():
     rows = c.execute("SELECT * FROM attendance").fetchall()
     conn.close()
     return str(rows)
+
 # ---------- RUN ----------
 if __name__ == "__main__":
     app.run(debug=True)
-    
