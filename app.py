@@ -1,13 +1,27 @@
 from flask import Flask, render_template, request, jsonify, redirect, session
-import sqlite3, base64, numpy as np, io
+import os
+import base64
+import numpy as np
+import io
 from datetime import datetime
 from PIL import Image
+import psycopg2
+from psycopg2 import Binary
 
 # ===============================
 # 🔥 TOGGLE MODE
 # ===============================
-USE_AI = True
+USE_AI = os.getenv("USE_AI", "True").lower() == "true"
 
+# ===============================
+# 🔥 APP CONFIG
+# ===============================
+app = Flask(__name__, static_folder='static', template_folder='templates')
+app.secret_key = os.getenv("SECRET_KEY", "secret123")
+
+# ===============================
+# 🔥 FACE IMPORT
+# ===============================
 FACE_AVAILABLE = False
 
 try:
@@ -17,52 +31,87 @@ try:
 except:
     print("face_recognition not available (OK for server)")
 
-app = Flask(__name__, static_folder='static', template_folder='templates')
-app.secret_key = "secret123"
+# ===============================
+# 🔥 POSTGRES CONFIG
+# ===============================
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-DB = "attendance.db"
-
+# ===============================
 # ---------- DB ----------
-def get_conn(): 
-    return sqlite3.connect(DB)
+# ===============================
+def get_conn():
+    return psycopg2.connect(DATABASE_URL)
+
 
 def init_db():
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY, name TEXT UNIQUE, encoding BLOB)")
-    c.execute("CREATE TABLE IF NOT EXISTS attendance(id INTEGER PRIMARY KEY, name TEXT, subject TEXT, date TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY, username TEXT, password TEXT, role TEXT)")
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id SERIAL PRIMARY KEY,
+        name TEXT UNIQUE,
+        encoding BYTEA
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS attendance(
+        id SERIAL PRIMARY KEY,
+        name TEXT,
+        subject TEXT,
+        date DATE
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS accounts(
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT,
+        role TEXT
+    )
+    """)
 
     conn.commit()
     conn.close()
 
-init_db()
 
 def create_admin():
     conn = get_conn()
     c = conn.cursor()
 
-    if not c.execute("SELECT * FROM accounts WHERE username='admin'").fetchone():
-        c.execute("INSERT INTO accounts VALUES(NULL,'admin','admin123','admin')")
+    c.execute("SELECT * FROM accounts WHERE username=%s", ('admin',))
+    exists = c.fetchone()
+
+    if not exists:
+        c.execute(
+            "INSERT INTO accounts(username,password,role) VALUES(%s,%s,%s)",
+            ('admin', 'admin123', 'admin')
+        )
 
     conn.commit()
     conn.close()
 
+
+init_db()
 create_admin()
 
+# ===============================
 # ---------- IMAGE ----------
+# ===============================
 def decode_image(data):
     data = data.split(",")[1]
     img_bytes = base64.b64decode(data)
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     return np.array(img)
 
+
 # ===============================
 # 🔥 FACE ENCODING
 # ===============================
 def get_encoding(img):
-    if not USE_AI:
+    if not USE_AI or not FACE_AVAILABLE:
         return None
 
     img = np.ascontiguousarray(img, dtype=np.uint8)
@@ -74,8 +123,11 @@ def get_encoding(img):
     enc = face_recognition.face_encodings(img, loc)
     return enc[0], loc[0]
 
+
+# ===============================
 # ---------- SIGNUP ----------
-@app.route("/signup", methods=["GET","POST"])
+# ===============================
+@app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
         u = request.form["username"]
@@ -84,12 +136,17 @@ def signup():
         conn = get_conn()
         c = conn.cursor()
 
-        exists = c.execute("SELECT * FROM accounts WHERE username=?", (u,)).fetchone()
+        c.execute("SELECT * FROM accounts WHERE username=%s", (u,))
+        exists = c.fetchone()
 
         if exists:
+            conn.close()
             return "User already exists"
 
-        c.execute("INSERT INTO accounts VALUES(NULL,?,?,?)", (u,p,"student"))
+        c.execute(
+            "INSERT INTO accounts(username,password,role) VALUES(%s,%s,%s)",
+            (u, p, "student")
+        )
 
         conn.commit()
         conn.close()
@@ -98,7 +155,10 @@ def signup():
 
     return render_template("signup.html")
 
+
+# ===============================
 # ---------- LOGIN ----------
+# ===============================
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -108,11 +168,12 @@ def login():
         conn = get_conn()
         c = conn.cursor()
 
-        user = c.execute(
-            "SELECT * FROM accounts WHERE username=? AND password=?",
+        c.execute(
+            "SELECT * FROM accounts WHERE username=%s AND password=%s",
             (u, p)
-        ).fetchone()
+        )
 
+        user = c.fetchone()
         conn.close()
 
         if user:
@@ -126,10 +187,12 @@ def login():
 
     return render_template("login.html")
 
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
+
 
 # ===============================
 # 🔥 ADMIN DASHBOARD
@@ -142,36 +205,37 @@ def home():
     conn = get_conn()
     c = conn.cursor()
 
-    logs = c.execute(
-        "SELECT name,subject,date FROM attendance ORDER BY id DESC"
-    ).fetchall()
+    c.execute("SELECT name,subject,date FROM attendance ORDER BY id DESC")
+    logs = c.fetchall()
 
     subjects = ["AI", "Math", "DBMS"]
 
-    total_students = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM users")
+    total_students = c.fetchone()[0]
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().date()
 
-    present_total = c.execute("""
+    c.execute("""
         SELECT COUNT(DISTINCT name)
         FROM attendance
-        WHERE date=?
-    """, (today,)).fetchone()[0]
+        WHERE date=%s
+    """, (today,))
+    present_total = c.fetchone()[0]
 
     summary = []
     subject_counts = []
 
     for s in subjects:
-        today = datetime.now().strftime("%Y-%m-%d")
-
-        present = c.execute("""
+        c.execute("""
         SELECT COUNT(DISTINCT name)
         FROM attendance
-        WHERE subject=? AND date=?
-        """, (s, today)).fetchone()[0]
+        WHERE subject=%s AND date=%s
+        """, (s, today))
+
+        present = c.fetchone()[0]
 
         percentage = int((present / total_students) * 100) if total_students > 0 else 0
-        percent = min(percentage, 100)
+        percentage = min(percentage, 100)
 
         subject_counts.append(present)
 
@@ -181,33 +245,31 @@ def home():
             "percentage": percentage
         })
 
-    # 🔥 TOP STUDENTS FIXED
-    total_classes = c.execute("""
-        SELECT COUNT(DISTINCT date)
-        FROM attendance
-    """).fetchone()[0]
-
-    if total_classes == 0:
-        total_classes = c.execute("""
-        SELECT COUNT(*)
-        FROM attendance
-    """).fetchone()[0]
+    # 🔥 TOP STUDENTS
+    c.execute("SELECT COUNT(DISTINCT date) FROM attendance")
+    total_classes = c.fetchone()[0]
 
     total_subjects = len(subjects)
 
-    student_stats = c.execute("""
+    c.execute("""
         SELECT name, COUNT(*) as total
         FROM attendance
         GROUP BY name
         ORDER BY total DESC
-    """).fetchall()
+        LIMIT 3
+    """)
+
+    rows = c.fetchall()
 
     top_students = []
-    for s in student_stats[:3]:
-        name = s[0]
-        total = s[1]
 
-        percent = int((total / (total_classes * total_subjects)) * 100) if total_classes else 0
+    for row in rows:
+        name = row[0]
+        total = row[1]
+
+        total_possible = max(total_classes * total_subjects, 1)
+
+        percent = int((total / total_possible) * 100)
         percent = min(percent, 100)
 
         top_students.append({
@@ -216,9 +278,11 @@ def home():
         })
 
     conn.close()
+
     absent = max(0, total_students - present_total)
-    
-    return render_template("dashboard.html",
+
+    return render_template(
+        "dashboard.html",
         logs=logs,
         summary=summary,
         subjects=subjects,
@@ -229,7 +293,10 @@ def home():
         top_students=top_students
     )
 
+
+# ===============================
 # ---------- STUDENT ----------
+# ===============================
 @app.route("/student")
 def student_page():
     if "user" not in session or session.get("role") != "student":
@@ -237,10 +304,12 @@ def student_page():
 
     return render_template("student.html")
 
+
+# ===============================
 # ---------- STUDENT DASHBOARD ----------
+# ===============================
 @app.route("/student_dashboard")
 def student_dashboard():
-
     if "user" not in session:
         return jsonify({"error": "login required"})
 
@@ -249,14 +318,20 @@ def student_dashboard():
     conn = get_conn()
     c = conn.cursor()
 
-    logs = c.execute("""
+    c.execute("""
         SELECT subject, date
         FROM attendance
-        WHERE name=?
-    """, (name,)).fetchall()
+        WHERE name=%s
+    """, (name,))
+
+    logs = c.fetchall()
 
     total = len(logs)
-    percentage = int((total / (len(set([l[1] for l in logs])) * 3)) * 100) if logs else 0
+
+    unique_days = len(set([str(l[1]) for l in logs]))
+    total_possible = max(unique_days * 3, 1)
+
+    percentage = int((total / total_possible) * 100) if total else 0
     percentage = min(percentage, 100)
 
     subjects_list = ["AI", "Math", "DBMS"]
@@ -264,6 +339,7 @@ def student_dashboard():
 
     for sub in subjects_list:
         count = sum(1 for l in logs if l[0] == sub)
+
         percent_sub = int((count / total) * 100) if total > 0 else 0
 
         subject_data.append({
@@ -276,10 +352,13 @@ def student_dashboard():
     return jsonify({
         "percentage": percentage,
         "subjects": subject_data,
-        "logs": [{"subject": l[0], "date": l[1]} for l in logs]
+        "logs": [{"subject": l[0], "date": str(l[1])} for l in logs]
     })
 
+
+# ===============================
 # ---------- LIVE DATA ----------
+# ===============================
 @app.route("/live_data")
 def live_data():
     conn = get_conn()
@@ -289,11 +368,13 @@ def live_data():
     counts = []
 
     for s in subjects:
-        present = c.execute("""
+        c.execute("""
             SELECT COUNT(DISTINCT name)
-            FROM attendance WHERE subject=?
-        """, (s,)).fetchone()[0]
+            FROM attendance
+            WHERE subject=%s
+        """, (s,))
 
+        present = c.fetchone()[0]
         counts.append(present)
 
     conn.close()
@@ -303,10 +384,12 @@ def live_data():
         "counts": counts
     })
 
+
+# ===============================
 # ---------- REGISTER ----------
+# ===============================
 @app.route("/register_image", methods=["POST"])
 def register():
-
     if not USE_AI:
         return jsonify({"message": "Registered (Demo Mode)"})
 
@@ -315,7 +398,7 @@ def register():
 
     if not name:
         return jsonify({"message": "Name required"})
-    
+
     img = decode_image(data["image"])
     res = get_encoding(img)
 
@@ -327,46 +410,44 @@ def register():
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("DELETE FROM users WHERE name=?", (name,))
-    c.execute("INSERT INTO users VALUES(NULL,?,?)",
-          (name, enc.tobytes()))
+    c.execute("DELETE FROM users WHERE name=%s", (name,))
+    c.execute(
+        "INSERT INTO users(name,encoding) VALUES(%s,%s)",
+        (name, Binary(enc.tobytes()))
+    )
 
     conn.commit()
     conn.close()
 
-    # 🔥 SYNC USER
-    try:
-        import requests
-        requests.post(
-            "https://smart-attendance-system-8a0k.onrender.com/register_remote",
-            json={"name": name, "encoding": enc.tolist()}
-        )
-    except Exception as e:
-        print("User sync failed:", e)
-
     return jsonify({"message": "Registered successfully"})
 
+
+# ===============================
 # ---------- RECOGNIZE ----------
+# ===============================
 @app.route("/recognize_image", methods=["POST"])
 def recognize():
-
     subject = request.json.get("subject")
 
     if not USE_AI:
         name = "Demo User"
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = datetime.now().date()
 
         conn = get_conn()
         c = conn.cursor()
 
-        exists = c.execute("""
+        c.execute("""
             SELECT * FROM attendance
-            WHERE name=? AND subject=? AND date=?
-        """, (name, subject, today)).fetchone()
+            WHERE name=%s AND subject=%s AND date=%s
+        """, (name, subject, today))
+
+        exists = c.fetchone()
 
         if not exists:
-            c.execute("INSERT INTO attendance VALUES(NULL,?,?,?)",
-                      (name, subject, today))
+            c.execute(
+                "INSERT INTO attendance(name,subject,date) VALUES(%s,%s,%s)",
+                (name, subject, today)
+            )
             conn.commit()
 
         conn.close()
@@ -390,34 +471,41 @@ def recognize():
     conn = get_conn()
     c = conn.cursor()
 
-    users = c.execute("SELECT name,encoding FROM users").fetchall()
+    c.execute("SELECT name,encoding FROM users")
+    users = c.fetchall()
 
     best_name = None
     best = 999
 
-    for name, db in users:
-        db = np.frombuffer(db, dtype=np.float64)
+    for row in users:
+        uname = row[0]
+        db = np.frombuffer(row[1], dtype=np.float64)
+
         dist = np.linalg.norm(enc - db)
 
         if dist < best:
             best = dist
-            best_name = name
+            best_name = uname
 
     if best > 0.5:
+        conn.close()
         return jsonify({
             "success": False,
             "message": "Unknown",
             "box": [top, right, bottom, left]
         })
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().date()
 
-    exists = c.execute("""
+    c.execute("""
         SELECT * FROM attendance
-        WHERE name=? AND subject=? AND date=?
-    """, (best_name, subject, today)).fetchone()
+        WHERE name=%s AND subject=%s AND date=%s
+    """, (best_name, subject, today))
+
+    exists = c.fetchone()
 
     if exists:
+        conn.close()
         return jsonify({
             "success": True,
             "name": best_name,
@@ -425,34 +513,27 @@ def recognize():
             "box": [top, right, bottom, left]
         })
 
-    c.execute("INSERT INTO attendance VALUES(NULL,?,?,?)",
-          (best_name, subject, today))
+    c.execute(
+        "INSERT INTO attendance(name,subject,date) VALUES(%s,%s,%s)",
+        (best_name, subject, today)
+    )
 
     conn.commit()
-
-    # 🔥 SYNC ATTENDANCE
-    try:
-        import requests
-        requests.post(
-            "https://smart-attendance-system-8a0k.onrender.com/mark_remote",
-            json={"name": best_name, "subject": subject}
-        )
-    except Exception as e:
-        print("Hybrid sync failed:", e)
-
     conn.close()
 
     return jsonify({
-         "success": True,
+        "success": True,
         "name": best_name,
         "message": "Marked",
-         "box": [top, right, bottom, left]
+        "box": [top, right, bottom, left]
     })
 
+
+# ===============================
 # ---------- REMOTE ----------
+# ===============================
 @app.route("/mark_remote", methods=["POST"])
 def mark_remote():
-
     data = request.json
 
     name = data.get("name", "").strip()
@@ -461,51 +542,70 @@ def mark_remote():
     if not name:
         return jsonify({"message": "Name required"})
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().date()
 
     conn = get_conn()
     c = conn.cursor()
 
-    exists = c.execute("""
+    c.execute("""
         SELECT * FROM attendance
-        WHERE name=? AND subject=? AND date=?
-    """, (name, subject, today)).fetchone()
+        WHERE name=%s AND subject=%s AND date=%s
+    """, (name, subject, today))
+
+    exists = c.fetchone()
 
     if not exists:
-        c.execute("INSERT INTO attendance VALUES(NULL,?,?,?)",
-                  (name, subject, today))
+        c.execute(
+            "INSERT INTO attendance(name,subject,date) VALUES(%s,%s,%s)",
+            (name, subject, today)
+        )
         conn.commit()
 
     conn.close()
 
     return jsonify({"message": "Marked online"})
 
+
 @app.route("/register_remote", methods=["POST"])
 def register_remote():
     data = request.json
+
     name = data["name"]
     enc = np.array(data["encoding"], dtype=np.float64)
 
     conn = get_conn()
     c = conn.cursor()
 
-    c.execute("DELETE FROM users WHERE name=?", (name,))
-    c.execute("INSERT INTO users VALUES(NULL,?,?)",
-              (name, enc.tobytes()))
+    c.execute("DELETE FROM users WHERE name=%s", (name,))
+    c.execute(
+        "INSERT INTO users(name,encoding) VALUES(%s,%s)",
+        (name, Binary(enc.tobytes()))
+    )
 
     conn.commit()
     conn.close()
 
     return jsonify({"message": "User synced"})
 
+
+# ===============================
+# ---------- CHECK DB ----------
+# ===============================
 @app.route("/check_db")
 def check_db():
     conn = get_conn()
     c = conn.cursor()
-    rows = c.execute("SELECT * FROM attendance").fetchall()
+
+    c.execute("SELECT * FROM attendance")
+    rows = c.fetchall()
+
     conn.close()
+
     return str(rows)
 
+
+# ===============================
 # ---------- RUN ----------
+# ===============================
 if __name__ == "__main__":
     app.run(debug=True)

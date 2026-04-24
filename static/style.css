@@ -1,8 +1,5 @@
 /* RESET */
 *{
-    box-sizing: border-box;
-}
-*{
     margin:0;
     padding:0;
     box-sizing:border-box;
@@ -26,6 +23,7 @@ body{
     background:#0f172a;
     z-index:1000;
     padding:20px;
+    transition:0.3s;
 }
 
 .sidebar h2{
@@ -66,6 +64,7 @@ body{
 .main{
     margin-left:220px;
     padding:20px;
+    transition:0.3s;
 }
 
 /* TOPBAR */
@@ -160,13 +159,12 @@ button:hover{
 }
 
 .box h4{
-    margin:0;
     font-size:14px;
     color:#94a3b8;
 }
 
 .box p{
-    margin:5px 0 0;
+    margin-top:5px;
     font-size:20px;
     font-weight:bold;
 }
@@ -201,6 +199,11 @@ button:hover{
     border-radius:8px;
     margin:5px 0;
     font-size:14px;
+    transition:0.2s;
+}
+
+#logsContainer p:hover{
+    background:#334155;
 }
 
 /* CAMERA */
@@ -212,25 +215,16 @@ button:hover{
     height: 160px;
     border-radius: 12px;
     overflow: hidden;
-    background: transparent;
     z-index: 9999;
+    border:2px solid #1e293b;
 }
 
-.camera video{
+.camera video,
+.camera canvas{
     position:absolute;
-    top:0;
-    left:0;
     width:100%;
     height:100%;
     object-fit:cover;
-}
-
-.camera canvas{
-    position:absolute;
-    top:0;
-    left:0;
-    width:100%;
-    height:100%;
 }
 
 /* POPUP */
@@ -254,13 +248,46 @@ button:hover{
     transform:translateY(0);
 }
 
-/* SMOOTH SCROLL */
-html{
-    scroll-behavior:smooth;
+/* GRID */
+.charts-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px,1fr));
+    gap:15px;
+}
+
+.card.small{
+    height:260px;
+    display:flex;
+    flex-direction:column;
+}
+
+.card.small canvas{
+    flex:1;
+}
+
+/* LOGIN */
+.login-body{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+
+.login-container{
+    background:rgba(15,23,42,0.9);
+    padding:30px;
+    border-radius:16px;
+    width:320px;
+}
+
+.login-container input{
+    width:100%;
+    margin:10px 0;
 }
 
 /* RESPONSIVE */
 @media (max-width:768px){
+
     .sidebar{
         width:180px;
     }
@@ -270,98 +297,31 @@ html{
     }
 
     .camera{
-        width:200px;
-        height:150px;
+        width:180px;
+        height:130px;
     }
 }
-/* ================= LOGIN PAGE FIX ================= */
 
-.login-body{
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    height:100vh;
-    background:linear-gradient(135deg,#020617,#0f172a);
-}
+/* 🔥 MOBILE FIX (BIG IMPROVEMENT) */
+@media (max-width:600px){
 
-.login-container{
-    background:rgba(15,23,42,0.9);
-    padding:30px 25px;
-    border-radius:16px;
-    box-shadow:0 0 30px rgba(0,0,0,0.5);
-    text-align:center;
-    width:100%;
-    max-width:340px;
-}
+    .sidebar{
+        position:relative;
+        width:100%;
+        height:auto;
+    }
 
-/* TITLE */
-.login-container h2{
-    margin-bottom:10px;
-}
+    .main{
+        margin-left:0;
+    }
 
-.login-container p{
-    color:#94a3b8;
-    font-size:13px;
-    margin-bottom:15px;
-}
+    .top{
+        flex-direction:column;
+        align-items:stretch;
+    }
 
-/* INPUT FIX */
-.login-container input{
-    width:100%;
-    padding:12px 14px;
-    margin:10px 0;
-    border:none;
-    border-radius:10px;
-    background:#1e293b;
-    color:white;
-    outline:none;
-}
-
-/* BUTTON */
-.login-container button{
-    width:100%;
-    padding:12px;
-    background:linear-gradient(90deg,#22c55e,#4ade80);
-    border:none;
-    border-radius:10px;
-    font-weight:bold;
-    cursor:pointer;
-    margin-top:10px;
-    transition:0.2s;
-}
-
-.login-container button:hover{
-    transform:scale(1.03);
-    box-shadow:0 0 10px rgba(34,197,94,0.5);
-}
-/* CHART GRID */
-.charts-grid{
-    display:grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px,1fr));
-    gap:15px;
-}
-
-/* SMALL CARDS */
-.card.small{
-    height:260px;
-}
-
-/* FIX CHART SIZE */
-.card.small canvas{
-    height:180px !important;
-}
-/* FORCE CHART VISIBILITY (FINAL FIX) */
-canvas{
-    width:100% !important;
-    height:220px !important;
-}
-
-/* FIX GRID HEIGHT */
-.card.small{
-    display:flex;
-    flex-direction:column;
-}
-
-.card.small canvas{
-    flex:1;
+    .camera{
+        width:150px;
+        height:110px;
+    }
 }

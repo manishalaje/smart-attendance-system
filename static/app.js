@@ -23,33 +23,19 @@ function initChart(){
         },
         options: {
             responsive:true,
-            maintainAspectRatio:false,
-            plugins:{ legend:{ labels:{ color:"white" } } }
+            maintainAspectRatio:false
         }
     });
 }
 
-// ---------- LINE CHART ----------
+// ---------- LINE ----------
 function initLineChart(){
     const ctx = document.getElementById("lineChart");
     if(!ctx) return;
 
     lineChart = new Chart(ctx, {
         type:"line",
-        data:{
-            labels:[],
-            datasets:[{
-                label:"Attendance Trend",
-                data:[],
-                borderColor:"#3b82f6",
-                tension:0.3
-            }]
-        },
-        options:{
-            responsive:true,
-            maintainAspectRatio:false,
-            plugins:{ legend:{ labels:{ color:"white" } } }
-        }
+        data:{ labels:[], datasets:[{ label:"Trend", data:[], borderColor:"#3b82f6" }] }
     });
 }
 
@@ -62,24 +48,18 @@ function initBarChart(){
         type:"bar",
         data:{
             labels:["AI","Math","DBMS"],
-            datasets:[{
-                data:[0,0,0],
-                backgroundColor:["#3b82f6","#22c55e","#f59e0b"]
-            }]
-        },
-        options:{
-            responsive:true,
-            maintainAspectRatio:false,
-            plugins:{ legend:{ display:false } }
+            datasets:[{ data:[0,0,0] }]
         }
     });
 }
 
-// ---------- UPDATE PIE + BAR ----------
+// ---------- UPDATE CHART ----------
 function updateChart(){
     fetch("/live_data")
     .then(r=>r.json())
     .then(d=>{
+        if(!d.subjects) return;
+
         pieChart.data.labels = d.subjects;
         pieChart.data.datasets[0].data = d.counts;
         pieChart.update();
@@ -89,59 +69,22 @@ function updateChart(){
             barChart.data.datasets[0].data = d.counts;
             barChart.update();
         }
-    });
+    })
+    .catch(()=>{});
 }
 
-// ---------- ✅ FIXED LINE CHART ----------
+// ---------- LINE ----------
 function updateLineChart(){
-    fetch("/live_data")   // 🔥 FIX: changed from /analytics_data
+    fetch("/live_data")
     .then(r=>r.json())
     .then(d=>{
-        if(lineChart){
-            lineChart.data.labels = d.subjects;
-            lineChart.data.datasets[0].data = d.counts;
-            lineChart.update();
-        }
-    });
-}
+        if(!lineChart) return;
 
-// ---------- 🏆 LEADERBOARD ----------
-function loadLeaderboard(){
-    fetch("/leaderboard")
-    .then(r=>r.json())
-    .then(data=>{
-        let container = document.getElementById("leaderboard");
-        if(!container) return;
-
-        container.innerHTML = "";
-
-        data.forEach((s,i)=>{
-            let p = document.createElement("p");
-            p.innerText = `${i+1}. ${s.name} - ${s.percentage}%`;
-            container.appendChild(p);
-        });
-    });
-}
-
-// ---------- ⚠️ LOW ATTENDANCE ----------
-function loadWarnings(){
-    fetch("/student_stats")
-    .then(r=>r.json())
-    .then(data=>{
-        let container = document.getElementById("warnings");
-        if(!container) return;
-
-        container.innerHTML = "";
-
-        data.forEach(s=>{
-            if(s.low){
-                let p = document.createElement("p");
-                p.innerText = `⚠️ ${s.name} low attendance (${s.percentage}%)`;
-                p.style.color = "#ef4444";
-                container.appendChild(p);
-            }
-        });
-    });
+        lineChart.data.labels = d.subjects || [];
+        lineChart.data.datasets[0].data = d.counts || [];
+        lineChart.update();
+    })
+    .catch(()=>{});
 }
 
 // ---------- CAPTURE ----------
@@ -153,7 +96,7 @@ function getImage(){
     return c.toDataURL("image/jpeg");
 }
 
-// ---------- DRAW FACE ----------
+// ---------- DRAW BOX ----------
 function drawBox(box, name){
     if(!canvasOverlay || !video) return;
 
@@ -197,7 +140,8 @@ function register(){
     .then(r=>r.json())
     .then(d=>{
         status.innerText=d.message;
-    });
+    })
+    .catch(()=>status.innerText="Error");
 }
 
 // ---------- MARK ----------
@@ -219,15 +163,8 @@ function mark(){
         }else{
             drawBox(null,null);
         }
-    });
-}
-
-// ---------- RESET ----------
-function reset(){
-    if(canvasOverlay){
-        canvasOverlay.getContext("2d").clearRect(0,0,canvasOverlay.width,canvasOverlay.height);
-    }
-    status.innerText="Idle";
+    })
+    .catch(()=>status.innerText="Error");
 }
 
 // ---------- AUTO DETECT ----------
@@ -247,8 +184,6 @@ function autoDetect(){
     .then(r=>r.json())
     .then(d=>{
 
-        status.innerText="🔍 Scanning...";
-
         if(d.success){
             if(lastMarked!==d.name){
                 status.innerText="✅ "+d.name;
@@ -258,11 +193,7 @@ function autoDetect(){
             status.innerText="❌ "+d.message;
         }
 
-        if(d.box){
-            drawBox(d.box,d.name);
-        }else{
-            drawBox(null,null);
-        }
+        drawBox(d.box || null, d.name || null);
 
         busy=false;
     })
@@ -276,21 +207,19 @@ document.addEventListener("DOMContentLoaded", function(){
     canvasOverlay = document.getElementById("overlay");
     status = document.getElementById("status");
 
-    // camera
+    // CAMERA
     if(video){
         navigator.mediaDevices.getUserMedia({video:true})
-        .then(stream=>video.srcObject=stream);
+        .then(stream=>video.srcObject=stream)
+        .catch(()=>status.innerText="Camera blocked");
     }
 
-    // charts
     initChart();
     initLineChart();
     initBarChart();
 
-    // 🔥 AUTO UPDATES
-    setInterval(updateChart,2000);
-    setInterval(updateLineChart,3000);
-    setInterval(loadLeaderboard,4000);
-    setInterval(loadWarnings,5000);
-    setInterval(autoDetect,1200);
+    // 🔥 SAFE INTERVALS
+    setInterval(updateChart,3000);
+    setInterval(updateLineChart,4000);
+    setInterval(autoDetect,2000); // slower = safer
 });

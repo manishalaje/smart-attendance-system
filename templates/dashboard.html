@@ -70,7 +70,11 @@
 <div class="box">
 <h4>Attendance %</h4>
 <p>
-{{ (present_total / total_students * 100) | int if total_students > 0 else 0 }}%
+{% if total_students > 0 %}
+    {{ ((present_total / total_students) * 100) | round(0) }}%
+{% else %}
+    0%
+{% endif %}
 </p>
 </div>
 </div>
@@ -159,9 +163,13 @@
 <h3>📝 Logs</h3>
 
 <div id="logsContainer">
-{% for log in logs %}
-<p>{{log[0]}} - {{log[1]}} - {{log[2]}}</p>
-{% endfor %}
+{% if logs %}
+    {% for log in logs %}
+        <p>{{log[0]}} - {{log[1]}} - {{log[2]}}</p>
+    {% endfor %}
+{% else %}
+    <p>No logs yet</p>
+{% endif %}
 </div>
 
 </div>
